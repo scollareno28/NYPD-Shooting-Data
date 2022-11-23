@@ -1,0 +1,195 @@
+---
+title: "NYPD Shooting Data"
+author: "SC"
+date: '2022-10-29'
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Using R Markdown, this study will examine each shooting in New York City from 2006 up until the end of 2021.
+
+Each quarter, the New York Police Department (NYPD) website gets data entered manually by the Office of Management Analysis.  Details of each shooting are given including the victims demographics, suspect demographics, and geographical locations of each shooting.  
+
+
+## Import Libraries and Install Packages
+
+In order to perform the analysis, libraries and packages need to be loaded in and installed.  In order to move this analysis over to something readable like a pdf, tinytex will be installed.
+#```{r}
+#install.packages("tinytex")
+#tinytex::install_tinytex()
+#```
+
+Next, the tidyverse and lubridate packages will be installed to help us parse through the data in a more user friendly way.
+
+```{r library, message=FALSE, warning=FALSE}
+# install.packages("tidyverse")
+library(tidyverse)
+library(lubridate)
+
+```
+
+## Load Data
+
+Looking at the NYPD website, the data can be exported into a CSV file.  The data can then be read using read_csv().
+
+```{r load}
+data = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(data)
+```
+## Clean and Transform Data
+For the purposes of this study, certain information is not useful. These include Precinct, Juisdiction, X & Y Coordinates, and Longitude & Latitude.  This can be done using the pipe operatore %>%.
+
+```{r}
+data2 = data %>% select(INCIDENT_KEY,
+                        OCCUR_DATE,
+                        OCCUR_TIME,
+                        BORO,
+                        STATISTICAL_MURDER_FLAG,
+                        PERP_AGE_GROUP,
+                        PERP_SEX,
+                        PERP_RACE,
+                        VIC_AGE_GROUP,
+                        VIC_SEX,
+                        VIC_RACE)
+#Find column(s) with confusing or missing values 
+lapply(data2, function(x) sum(is.na(x)))
+```
+All of these data types are factors except for **INCIDENT_KEY**, which can be treated as a string.  
+
+Cleaning up the empty data spaces:
+```{r}
+data2 = data2 %>% 
+  replace_na(list(PERP_AGE_GROUP = "Unknown", PERP_SEX = "Unknown", PERP_RACE = "Unknown"))
+
+data2$PERP_AGE_GROUP = recode(data2$PERP_AGE_GROUP, UNKNOWN = "Unknown")
+data2$PERP_SEX = recode(data2$PERP_SEX, U = "Unknown")
+data2$PERP_RACE = recode(data2$PERP_RACE, UNKNOWN = "Unknown")
+data2$VIC_SEX   = recode(data2$VIC_SEX, U = "Unknown")
+data2$VIC_RACE   = recode(data2$VIC_RACE, UNKNOWN = "Unknown")
+data2$BORO = as.factor(data2$BORO)
+data2$PERP_AGE_GROUP = as.factor(data2$PERP_AGE_GROUP)
+data2$PERP_SEX = as.factor(data2$PERP_SEX)
+data2$PERP_RACE = as.factor(data2$PERP_RACE)
+data2$VIC_AGE_GROUP = as.factor(data2$VIC_AGE_GROUP)
+data2$VIC_SEX = as.factor(data2$VIC_SEX)
+data2$VIC_RACE = as.factor(data2$VIC_RACE)
+
+summary(data2)
+```
+## Visualization and Analysis
+```{r}
+b <- ggplot(data2, aes(y = BORO)) + geom_bar() + labs(title = "Shootings In Boroughs", 
+                                                      x = "Count", y = "Borough")
+b
+```
+Based on this chart, it is easy to see which Borough has seen the highest amount of shootings between 2006 and 2021.  Let's do some further analysis with this information.
+```{r}
+crime_num <- data2 %>%
+  group_by(BORO) %>%
+  count(name='crimes')
+murder_num <- data2 %>%
+  group_by(BORO) %>%
+  summarize(murder = sum(STATISTICAL_MURDER_FLAG))
+murder_data <- merge(crime_num, murder_num) %>%
+  mutate(murder_rate = murder/crimes)
+murder_data
+```
+Above is a breakdown of the murder rates by each Boro in New York City.  
+
+Next, lets take a look at shooters by race and age. 
+
+```{r}
+r <- ggplot(data2, aes(y = PERP_RACE)) + geom_bar() + labs(title = "Perpitrators by Race", 
+                                                           x = "Count", y = "Race")
+r
+```
+```{r}
+crime_num <- data2 %>%
+  group_by(PERP_RACE) %>%
+  count(name='crimes')
+murder_num <- data2 %>%
+  group_by(PERP_RACE) %>%
+  summarize(murder = sum(STATISTICAL_MURDER_FLAG))
+murder_data <- merge(crime_num, murder_num) %>%
+  mutate(murder_rate = murder/crimes)
+murder_data
+```
+The table above shows murder rate by perpetrator race. 
+
+Now let's take a look at the victims.  
+```{r}
+v <- ggplot(data2, aes(y = VIC_RACE)) + geom_bar() + labs(title = "Victims by Race", 
+                                                          x = "Count", y = "Race")
+v
+```
+```{r}
+crime_num <- data2 %>%
+  group_by(VIC_RACE) %>%
+  count(name='crimes')
+murder_num <- data2 %>%
+  group_by(VIC_RACE) %>%
+  summarize(murder = sum(STATISTICAL_MURDER_FLAG))
+murder_data <- merge(crime_num, murder_num) %>%
+  mutate(murder_rate = murder/crimes)
+murder_data
+```
+
+
+Looking at the graphs above, there is a breakdown of perpetrators and victims by race.  You can also see a glaring issue in the first graph when attempting to do any kind of analysis on the people who committed the shootings: the shooters race wasn't able to be identified.  While there was still a breakdown of murder rates by perpetrator and victim, it must be iterated again that there's an issue with not knowing the race of a large number of shooters.  Let's examine if the same thing happens when breaking it down by age.
+
+```{r}
+age <- ggplot(data2, aes(y = PERP_AGE_GROUP)) + geom_bar() + labs(title = "Perpitrators by Age Group", 
+                                                                  x = "Count", y = "Age Group")
+age
+```
+Looking at this graph, there was an obvious oversight when cleaning the data.  On the y-axis "940, 224, 1020" mean nothing and need to be cleaned up.
+
+```{r}
+data2 = subset(data2, PERP_AGE_GROUP!='1020' & PERP_AGE_GROUP != '224' & PERP_AGE_GROUP != '940')
+age2 <- ggplot(data2, aes(y = PERP_AGE_GROUP)) + geom_bar() + labs(title = "Perpitrators by Age Group", 
+                                                                   x = "Count", y = "Age Group")
+age2
+```
+```{r}
+crime_num <- data2 %>%
+  group_by(PERP_AGE_GROUP) %>%
+  count(name='crimes')
+murder_num <- data2 %>%
+  group_by(PERP_AGE_GROUP) %>%
+  summarize(murder = sum(STATISTICAL_MURDER_FLAG))
+murder_data <- merge(crime_num, murder_num) %>%
+  mutate(murder_rate = murder/crimes)
+murder_data
+```
+
+
+
+Much better!
+
+Looking at this graph, there is the same issue.  There's a lack of detail about a large number of the shooters.  While this data has been clean enough to visualize, there's certain pitfalls to be careful about.  The same can be said about the perpetrator murder rate.  It should also be noted that there is a very small number of people in the 65+ group. 
+
+## Model
+Let's examine the ways it can be predicted if a shooting incident is a murder case or not.  In order to do this, the best tool that can be used is logistical regression.  The variables I'll take a look into are: BORO, PERP_Race, PERP_AGE
+
+```{r}
+glm.fit = glm(STATISTICAL_MURDER_FLAG ~ BORO + PERP_RACE + PERP_AGE_GROUP, family = binomial, data = data2)
+summary(glm.fit)
+```
+
+
+## Pitfalls and Bias
+
+As previously discussed, there's a number of issues with the data when trying to come to a conclusion about the shooters: a large number of shooter's race and age were not able to be identified.  That means any takeaways anybody might have about "who commits the most shootings" has to include the massive caveat that there is a large portion of shooters that cannot be identified at all.  
+
+When looking at bias I may have had doing this analysis, I only looked for the total number of shootings committed by race and age, which is itself bias.  I put a lot of emphasis on my analysis that there's a large number of shootings where the age and race of the shooter was not identified to mitigate this.
+
+I also did not break this down per capita.  This would be an excellent next point to study but we would need more population information about New York City.  
+
